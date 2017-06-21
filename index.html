@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Neurofeedback Training</title>
+	<script src="static/socket.io.js"></script>
+	<script src="static/d3.js"></script>
+	<script type="text/javascript">
+		var socket = io.connect('http://localhost');
+		var player;
+		var previousMentalState = true;
+		const threshold = 40;
+		const acceptableSignal = 20;
+		//Set up the initial layout.
+
+	</script>
+</head>
+<body>
+<p>Welcome</p>
+
+<div id="player"></div>
+<script type="text/javascript">
+  var tag = document.createElement('script');
+  tag.id = 'iframe-demo';
+  tag.src = 'https://www.youtube.com/iframe_api';
+  var firstScriptTag = document.getElementById('player');
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+  
+function onYouTubeIframeAPIReady() {
+	player = new YT.Player('player', {
+		height: '360',
+		width: '480',
+		videoId: 'T--VFcUUPrg', 
+		// Alarm: PowGPSdAxTI
+		// Gamma sound: axTImghP9Ts
+		// Techtalk: JGwWNGJdvx8
+		events:{
+			'onReady': startVideo,
+			'onStateChange': handleVideoEnd
+		}
+	});
+	function handleVideoEnd(event){
+		if(event.data == 0){
+			player.playVideo();
+		}
+	}
+	function startVideo(){
+		player.playVideo();
+	}
+}
+</script>
+<div id="vis"></div>
+<script type="text/javascript">
+var svgMargin = {
+	top: 40, right:40, bottom: 40, left:40
+}
+var svg = d3.select("#vis").append('svg').style('margin', 'auto').style('display', 'block');
+svg.attr('width', window.innerWidth - svgMargin.left - svgMargin.right)
+	.attr('height', window.innerHeight - svgMargin.top - svgMargin.bottom);
+svg.append('rect').attr('width', '100%').attr('height','100%').attr('fill', 'gray');
+const COLOR_FG = "#312e2e";
+const COLOR_BG = "#333333";
+const COLOR_CURRENT = "#cf3c3c";
+
+var max_block_hor = 15;
+var blockSize = Math.floor(Number(svg.attr('width')) / max_block_hor);
+var max_block_ver = Math.floor(svg.attr('height') / blockSize);
+var totalBlocks = max_block_hor * max_block_ver;
+var current_block_index=0;
+var eSenseStack = [];
+function generateBlock(x, y, width, height, eSense, blockId){
+	// var blockClass = 'block-'+blockId;
+	var block_bg = {
+		id: blockId,
+		class: 'background',
+		x: x, y: y, width: width, height: height, fill:COLOR_FG, blockBorder: 3
+	}
+	var block_fg = {
+		id: blockId,
+		class: 'forground',
+		x: block_bg.x + block_bg.blockBorder,
+		y: block_bg.y + block_bg.blockBorder,
+		width: block_bg.width - 2*block_bg.blockBorder,
+		height: block_bg.height - 2*block_bg.blockBorder, fill:COLOR_FG
+	}
+	x = block_fg.x;
+	y = block_fg.y;
+	width = block_fg.width;
+	height = block_fg.height;
+	const const_eeg=8;
+	const const_att=1;
+	const const_med=1;
+	var row_height = height / (const_att + const_med + const_eeg);
+	var eeg = {
+		x: x, y: y, width: width, height: row_height * const_eeg
+	}
+	var attention = {
+		id: blockId,
+		class: 'attention',
+		x: x, y: eeg.y + eeg.height, width: width * (eSense.attMed.attention / 100), height: row_height * const_att, fill:'#eeda14'
+	}
+	var meditation = {
+		id: blockId,
+		class: 'meditation',
+		x: x, y: attention.y + attention.height, width: width * (eSense.attMed.meditation / 100), height: row_height * const_med, fill:'#93F154'
+	}
+	var waveTempArr = [];
+	for (var waveType in eSense.waves) {
+		waveTempArr.push({
+			waveName: waveType,
+			value: eSense.waves[waveType]
+		});
+	}
+	waveTempArr.sort(function(a, b){
+		if (a.value > b.value) {
+			return 1;
+		}
+		else if(a.value < b.value) {
+			return -1;
+		}
+		else {
+			return 0;
+		}
+	});
+	var waveArr = {};
+	for (var i in waveTempArr) {
+		// The smaller rank, the higher value.
+		var rank = Number(i);
+		waveArr[waveTempArr[i].waveName] = rank;
+	}
+	var colorBrew = ['#fff7f3','#fde0dd','#fcc5c0','#fa9fb5','#f768a1','#dd3497','#ae017e','#7a0177']
+	var colorD3 = d3.scaleOrdinal(colorBrew);
+	colorD3.domain([0, 1, 2, 3, 4, 5, 6, 7]);
+	// console.log('Checking color scale:Domain['+colorD3.domain()+']Range['+colorD3.range()+']');
+	// for(var i= 0; i < 8; i++){
+	// 	console.log('Rank ' + i + '(should be ' + colorBrew[i]+') ->' +colorD3(i));
+	// }
+
+	var cell_height = eeg.height / 8;
+	var delta = {
+		id: blockId,
+		class: 'delta',
+		x: eeg.x, y: eeg.y, width: eeg.width, height: cell_height, fill:colorD3(waveArr['delta'])
+	};
+	var theta = {
+		id: blockId,
+		class: 'theta',
+		x: eeg.x, y: delta.y + delta.height, width:  eeg.width, height: cell_height, fill:colorD3(waveArr['theta'])
+	}
+	var lowAlpha = {
+		id: blockId,
+		class: 'lowAlpha',
+		x: eeg.x, y: theta.y + theta.height, width:  eeg.width, height: cell_height, fill:colorD3(waveArr['lowAlpha'])
+	}
+	var highAlpha = {
+		id: blockId,
+		class: 'highAlpha',
+		x: eeg.x, y: lowAlpha.y + lowAlpha.height, width:  eeg.width, height: cell_height, fill: colorD3(waveArr['highAlpha'])
+	}
+	var lowBeta = {
+		id: blockId,
+		class: 'lowBeta',
+		x: eeg.x, y: highAlpha.y + highAlpha.height, width:  eeg.width, height: cell_height, fill: colorD3(waveArr['lowBeta'])
+	}
+	var highBeta = {
+		id: blockId,
+		class: 'highBeta',
+		x: eeg.x, y: lowBeta.y + lowBeta.height, width:  eeg.width, height: cell_height, fill: colorD3(waveArr['highBeta'])
+	}
+	var lowGamma = {
+		id: blockId,
+		class: 'lowGamma',
+		x: eeg.x, y: highBeta.y + highBeta.height, width:  eeg.width, height: cell_height, fill: colorD3(waveArr['lowGamma'])	
+	}
+	var highGamma = {
+		id: blockId,
+		class: 'highGamma',
+		x: eeg.x, y: lowGamma.y + lowGamma.height, width:  eeg.width, height: cell_height, fill: colorD3(waveArr['highGamma'])
+	}
+	var eSenseRects = [block_bg, block_fg, attention, meditation, delta, theta, lowAlpha, highAlpha, lowBeta, highBeta, lowGamma, highGamma];
+	for (var rect in eSenseRects) {
+		eSenseRects[rect].class = eSenseRects[rect].class + " block-"+blockId;
+	}
+	return eSenseRects;
+}
+function drawBlock(blockGroup, rectData){
+	blockGroup.selectAll('rect').remove();
+	blockGroup.selectAll('rect').data(rectData)
+		.enter()
+		.append('rect')
+		.attr('class', function(d){
+			return d.class;
+		})
+		.attr('x', function(d,i) {
+			return d.x;
+		})
+		.attr('y', function(d,i) {
+			return d.y;
+		})
+		.attr('width', function(d,i){
+			return d.width;
+		})
+		.attr('height', function(d,i){
+			return d.height;
+		})
+		.attr('fill', function(d,i){
+			if(d.blockBorder != undefined) {
+				// d3.select(this).attr('stroke','black').attr('stroke-width',d.blockBorder);
+			}
+			return d.fill;
+		})
+		.on('mouseover', function(d,i){
+			if(d.blockBorder != undefined) {
+				d3.select(this).attr('fill','#ff4e50');
+			}
+		})
+		.on('mouseout', function(d,i){
+			if(d.blockBorder != undefined) {
+				d3.select(this).attr('fill',COLOR_FG);
+			}
+		})
+		.append('title').text(function(d){
+			eSense = eSenseStack[d.id];
+			switch(d.class.split(" ")[0]){
+				case 'attention':
+					return "Attention: "+eSense.attMed.attention;
+				case 'meditation':
+					return "Meditation: "+eSense.attMed.meditation;
+				case 'delta':
+					return "Delta: "+eSense.waves.delta;
+				case 'theta':
+					return "Delta: "+eSense.waves.theta;
+				case 'lowAlpha':
+					return "Low Alpha: "+eSense.waves.lowAlpha;
+				case 'highAlpha':
+					return "High Alpha: "+eSense.waves.highAlpha;
+				case 'lowBeta':
+					return "Low Beta: "+eSense.waves.lowBeta;
+				case 'highBeta':
+					return "High Beta: "+eSense.waves.highBeta;
+				case 'lowGamma':
+					return "Low Gamma: "+eSense.waves.lowGamma;
+				case 'highGamma':
+					return "High Gamma: "+eSense.waves.highGamma;
+			}
+			return JSON.stringify(eSense);
+		});
+}
+// Need to check for increasing beta wave.
+socket.on('eeg', function(eSense){
+	// console.log(eSense);
+	// socket.emit('my other event', {
+	// 	my: 'data'
+	// })
+	var mentalState = true;
+	if (eSense.signal > acceptableSignal) {
+		player.pauseVideo();
+		return;
+	}
+	// Store the data.
+	if(eSenseStack.length < totalBlocks){	
+		eSenseStack.push(eSense);
+		current_block_index = eSenseStack.length - 1;
+	//Display the data.
+		svg.selectAll('g').data(eSenseStack)
+			.enter()
+			.append('g')
+			.attr('id', function(eSenseData, iBlock){
+				// For each block, draw it.
+				var r = Math.floor(iBlock/max_block_hor);
+				var c = iBlock%max_block_hor;
+				var rects = generateBlock(blockSize * c, blockSize * r, blockSize, blockSize, eSenseData, iBlock);
+				drawBlock(d3.select(this), rects);
+				var id = 'block-' + iBlock;
+				return id;
+			});
+		d3.select('.block-' + current_block_index + '.background')
+			.attr('fill', COLOR_CURRENT);
+		d3.select('.block-' + (current_block_index + totalBlocks - 1) % totalBlocks + '.background')
+			.attr('fill', COLOR_FG);
+	}else{
+		current_block_index = (current_block_index+1) % totalBlocks;
+		eSenseStack[current_block_index] = eSense;
+		//Display the data.
+		var r = Math.floor(current_block_index/max_block_hor);
+		var c = current_block_index%max_block_hor;
+		var rects = generateBlock(blockSize * c, blockSize * r, blockSize, blockSize, eSense, current_block_index);
+		var group = svg.select('#block-'+current_block_index);	
+		drawBlock(group, rects);
+		d3.select('.block-' + current_block_index + '.background')
+			.attr('fill', COLOR_CURRENT);
+		d3.select('.block-' + (current_block_index + totalBlocks - 1) % totalBlocks + '.background')
+			.attr('fill', COLOR_FG);
+	}
+	if (eSense.attMed.attention < threshold || eSense.attMed.meditation < threshold) {
+		//^ Attention is below 80.
+		mentalState = false;
+	}
+	if (player != null && (mentalState != previousMentalState)){
+		//0.25, 0.5, 1, 1.5, and 2
+		if(mentalState == true) {
+			// User is attending well.
+			player.setPlaybackRate(1);
+		}
+		else {
+			// User is poorly concentrating.
+			player.setPlaybackRate(1);					
+		}
+		previousMentalState = mentalState;
+	}
+})
+</script>
+</body>
+</html>
